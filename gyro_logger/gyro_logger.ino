@@ -19,33 +19,58 @@ int16_t gx, gy, gz;
 #define LED_PIN 13
 #define BTN_PIN 3
 bool isRecording = false;
+bool isRecordingShown = false;
 bool btnReleased = false;
 bool blinkState = false;
 char txtname[] = "gf.txt";
-int _time = 0;
-//gfloggerinfo
-#include <avr/pgmspace.h>
-PROGMEM const char logger_header[] = "GYROFLOW IMU LOG\nversion,1.1\nid,custom_logger_name\norientation,YxZ\nnote,development_test\fwversion,FIRMWARE_0.1.0\ntimestamp,1644159993\vendor,potatocam\videofilename,videofilename.mp4\lensprofile,potatocam_mark1_prime_7_5mm_4k\tscale,0.001\gscale,0.00122173047\nascale,0.00048828125\nt,gx,gy,gz,ax,ay,az";
-String templine;
+int16_t _time = 0;
 bool newLine = true;
 void setup() {
-    // join I2C bus (I2Cdev library doesn't do this automatically)
+   // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
     #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
         Fastwire::setup(400, true);
     #endif   // initialize serial communication
-    // serial value can be up to you depending on project
-    Serial.begin(9600);
-    Serial.println("Initializing GyroFlow Logger...");
-    // initialize SD card
-    if (SD.begin())
-    {
-        Serial.println("SD card is ready to use.");
-    } else
-    {
-        Serial.println("SD card initialization failed");
-        return;
+   Serial.begin(9600);
+   Serial.println("Initializing GyroFlow Logger...");
+   // initialize SD card
+   if (SD.begin())
+   {
+       Serial.println("SD card is ready to use.");
+   } else
+   {
+       Serial.println("SD card initialization failed");
+       return;
+   }
+   if(SD.exists(txtname)){
+     Serial.println("File Allready present... Removing...");
+     SD.remove(txtname);
+     Serial.println("File removed !");
+   }else{
+     Serial.println("New Created !");
+   }
+   myFile = SD.open(txtname, FILE_WRITE);
+   if (myFile) {
+      myFile.println('GYROFLOW IMU LOG');
+      myFile.println('version,1.1');
+      myFile.println('id,custom_logger_name');
+      myFile.println('orientation,YxZ');
+      myFile.println('note,development_test');
+      myFile.println('fwversion,FIRMWARE_0.1.0');
+      myFile.println('timestamp,1644159993');
+      myFile.println('vendor,potatocam');
+      myFile.println('videofilename,videofilename.mp4');
+      myFile.println('lensprofile,potatocam_mark1_prime_7_5mm_4k');
+      myFile.println('tscale,0.001');
+      myFile.println('gscale,0.00122173047');
+      myFile.println('ascale,0.00048828125');
+      myFile.println('t,gx,gy,gz,ax,ay,az'); 
+      Serial.println("HeaderInfoWrited...");
+      Serial.println("Ready to write MPU data !");
+      Serial.println("t,gx,gy,gz,ax,ay,az");
+    }else{
+      Serial.println("SDError...");
     }
     // initialize accel/gyro
     Serial.println("Initializing accelerometer...");
@@ -57,35 +82,20 @@ void setup() {
     // configure Arduino LED for
     pinMode(LED_PIN, OUTPUT);
     pinMode(BTN_PIN, INPUT_PULLUP);
-    if(SD.exists(txtname)){
-      Serial.println("File Allready present... Removing...");
-      SD.remove(txtname);
-      Serial.println("File removed !");
-    }else{
-      Serial.println("New Created !");
-    }
-    myFile = SD.open(txtname, FILE_WRITE);
-    if (myFile) {
-      myFile.println(logger_header); 
-      Serial.println("HeaderInfoWrited...");
-      Serial.println("Ready to write MPU data !");
-      Serial.println("t,gx,gy,gz,ax,ay,az");
-    }else{
-      Serial.println("SDError...");
-    }
+   
+   
     // initialize timer1 
     cli();           // disable all interrupts
     TCCR1A = 0;
     TCCR1B = 0;
     TCNT1  = 0;
-    OCR1A = F_CPU / 1000; 
-    TCCR1B = (1 << WGM12);   // CTC mode
-    TCCR1B = (1 << CS12);    // // Frequency 16Mhz/ 256 = 62500 
-    TIMSK1 = (1 << OCIE1A);  // Local interruption OCIE1A
+    TCCR1B = (1 << WGM12) | (1 << CS10);
+    OCR1A = F_CPU / 1000;  
     sei();             // enable all interrupts
     
 }
 void loop() {
+  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
   while(!isRecording){
     Serial.println("Waiting to start...");
     blinkState = !blinkState;
@@ -100,6 +110,19 @@ void loop() {
   if(digitalRead(BTN_PIN)&&!btnReleased){
     btnReleased = true;
   }
+  if(isRecording && !isRecordingShown){
+    isRecordingShown = true;
+    Serial.println("Recording...");
+  }
+  if(isRecording && isRecordingShown){
+    Serial.print("a/g:\t");
+    Serial.print(ax); Serial.print("\t");
+    Serial.print(ay); Serial.print("\t");
+    Serial.print(az); Serial.print("\t");
+    Serial.print(gx); Serial.print("\t");
+    Serial.print(gy); Serial.print("\t");
+    Serial.println(gz);
+  }
   if(!digitalRead(BTN_PIN)&&isRecording&&btnReleased){
     Serial.println("Stopping record and closing file...");
     isRecording=false;
@@ -108,6 +131,9 @@ void loop() {
       blinkState = !blinkState;
       digitalWrite(LED_PIN, blinkState);
       delay(100);
+    }
+    while(true){//halting
+      
     }
   }
 }
@@ -120,25 +146,23 @@ ISR(TIMER1_COMPA_vect)        // interrupt service routine that wraps a user def
 
 void WriteNewLine(){
    if (myFile && isRecording) {
-    Serial.println("Recording...");
-    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    
     //t,gx,gy,gz,ax,ay,az
     //0,39,86,183,-1137,-15689,-2986
-    templine = String(_time);
-    templine.concat(",");
-    templine.concat(String(gx));
-    templine.concat(",");
-    templine.concat(String(gy));
-    templine.concat(",");
-    templine.concat(String(gz));
-    templine.concat(",");
-    templine.concat(String(ax));
-    templine.concat(",");
-    templine.concat(String(ay));
-    templine.concat(",");
-    templine.concat(String(az));
-    Serial.println(templine);
-    myFile.println(templine);
+    //myFile.println(_time+','+gx+','+gy+','+gz+','+ax+','+ay+','+az);
+    myFile.print(_time);
+    myFile.print(",");
+    myFile.print(gx);
+    myFile.print(",");
+    myFile.print(gy);
+    myFile.print(",");
+    myFile.print(gz);
+    myFile.print(",");
+    myFile.print(ax);
+    myFile.print(",");
+    myFile.print(ay);
+    myFile.print(",");
+    myFile.println(az);
     blinkState = !blinkState;
     digitalWrite(LED_PIN, blinkState);
     _time++;
