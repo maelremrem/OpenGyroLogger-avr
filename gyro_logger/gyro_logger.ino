@@ -24,16 +24,25 @@ bool isRecording = false;
 bool isRecordingShown = false;
 bool btnReleased = false;
 static bool blinkState = false;
-char txtname[] = "gf.txt";
+char configFileName[] = "gf.conf";
+#define TIMESTAMP 160000
+#define TIMESCALE 0.001
+#define GSCALE 0.00012
+#define ASCALE 0.0004
+char txtname[] = "gf";
+static int nbLogs = 0;
 static int16_t _time = 0;
-bool newLine = true;
 #define USE_TIMER_1     true
 #include "TimerInterrupt.h"
 #define TIMER_INTERVAL_MS    100
-const char headerInfo[] PROGMEM = {"GYROFLOW IMU LOG\nversion,1.1\nid,custom_logger_name\norientation,YxZ\nnote,development_test\nfwversion,FIRMWARE_0.1.0\ntimestamp,1644159993\nvendor,potatocam\nvideofilename,videofilename.mp4\nlensprofile,potatocam_mark1_prime_7_5mm_4k\ntscale,0.001\ngscale,0.00122173047\nascale,0.00048828125\nt,gx,gy,gz,ax,ay,az"};
-char myChar;
 void setup() {
-  
+  //init config
+  File configFile;
+    int timestamp = 0 ;
+    float timeScale = 0;
+    float gScale = 0;
+    float aScale = 0;
+    int fileNumber = 0;
    // join I2C bus (I2Cdev library doesn't do this automatically)
     #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
         Wire.begin();
@@ -41,52 +50,59 @@ void setup() {
         Fastwire::setup(400, true);
     #endif   // initialize serial communication
    Serial.begin(9600);
-   Serial.println("Initializing GyroFlow Logger...");
+   Serial.println(F("Initializing GyroFlow Logger..."));
    // initialize SD card
    if (SD.begin())
    {
-       Serial.println("SD card is ready to use.");
-   } else
-   {
-       Serial.println("SD card initialization failed");
-       return;
+       Serial.println(F("SD card is ready to use."));
+   } else {
+       Serial.println(F("SD card initialization failed"));
+       while(true){
+          blinkState = !blinkState;
+          digitalWrite(LED_PIN, blinkState);
+          delay(100);
+       }
    }
-   if(SD.exists(txtname)){
-     Serial.println("File Allready present... Removing...");
-     SD.remove(txtname);
-     Serial.println("File removed !");
+//load config file to custom header and logging speed
+//timestamp;timescale;gscale;ascale
+   if(SD.exists(configFileName)){
+      Serial.println(F("Config File Found !"));
+      configFile = SD.open(configFileName, FILE_READ);
+      //read config file
+      //char tempLine[30] = configFile.read();
+      char * pch;
+      //pch = strtok (tempLine,";");
+      //split loop
    }else{
-     Serial.println("New Created !");
+     Serial.println(F("Config File NOT Found !"));
+     configFile = SD.open(configFileName, FILE_WRITE);
+     //write default config file from define
+     timestamp = TIMESTAMP;
+     timeScale = TIMESCALE;
+     gScale = GSCALE;
+     aScale = ASCALE;
+     //configFile.println(F("GYROFLOW IMU LOG\nversion,1.1\nid,custom_logger_name\norientation,YxZ\nnote,development_test\nfwversion,FIRMWARE_0.1.0\ntimestamp,1644159993\nvendor,potatocam\nvideofilename,videofilename.mp4\nlensprofile,potatocam_mark1_prime_7_5mm_4k\ntscale,0.001\ngscale,0.00122173047\nascale,0.00048828125\nt,gx,gy,gz,ax,ay,az"));
+     //configFile.println(F(timestamp.toSring()+";"+timeScale+";"+gScale+";"+aScale));
+     configFile.flush();
+   }
+   
+   if(SD.exists(txtname)){
+     Serial.println(F("File Allready present... Removing..."));
+     SD.remove(txtname);
+     Serial.println(F("File removed !"));
+   }else{
+     Serial.println(F("New Created !"));
    }
    myFile = SD.open(txtname, FILE_WRITE);
    if (myFile) {
-//      myFile.println("GYROFLOW IMU LOG");
-//      myFile.println("version,1.1");
-//      myFile.println("id,custom_logger_name");
-//      myFile.println("orientation,YxZ");
-//      myFile.println("note,development_test");
-//      myFile.println("fwversion,FIRMWARE_0.1.0");
-//      myFile.println("timestamp,1644159993");
-//      myFile.println("vendor,potatocam");
-//      myFile.println("videofilename,videofilename.mp4");
-//      myFile.println("lensprofile,potatocam_mark1_prime_7_5mm_4k");
-//      myFile.println("tscale,0.001");
-//      myFile.println("gscale,0.00122173047");
-//      myFile.println("ascale,0.00048828125");
-//      myFile.println("t,gx,gy,gz,ax,ay,az"); 
-//      myFile.println("GYROFLOW IMU LOG\nversion,1.1\nid,custom_logger_name\norientation,YxZ\nnote,development_test\nfwversion,FIRMWARE_0.1.0\ntimestamp,1644159993\nvendor,potatocam\nvideofilename,videofilename.mp4\nlensprofile,potatocam_mark1_prime_7_5mm_4k\ntscale,0.001\ngscale,0.00122173047\nascale,0.00048828125\nt,gx,gy,gz,ax,ay,az\n");
-//      for (byte k = 0; k < strlen_P(headerInfo); k++) {
-//        myChar = pgm_read_byte_near(headerInfo + k);
-//        myFile.print(myChar);
-//      }
-//      myFile.print(headerInfo);
+
       myFile.println(F("GYROFLOW IMU LOG\nversion,1.1\nid,custom_logger_name\norientation,YxZ\nnote,development_test\nfwversion,FIRMWARE_0.1.0\ntimestamp,1644159993\nvendor,potatocam\nvideofilename,videofilename.mp4\nlensprofile,potatocam_mark1_prime_7_5mm_4k\ntscale,0.001\ngscale,0.00122173047\nascale,0.00048828125\nt,gx,gy,gz,ax,ay,az"));
       myFile.flush();
       Serial.println(F("HeaderInfoWrited..."));
       Serial.println(F("Ready to write MPU data !"));
       Serial.println(F("t,gx,gy,gz,ax,ay,az"));
     }else{
-      Serial.println("SDError...");
+      Serial.println(F("SDError..."));
     }
     // initialize accel/gyro
     Serial.println(F("Initializing accelerometer..."));
@@ -94,7 +110,7 @@ void setup() {
     accelgyro.setSleepEnabled(false);
     // verify connection
     Serial.println(F("Testing accelerometer connection..."));
-    Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+    Serial.println(accelgyro.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
     // configure Arduino LED for
     pinMode(LED_PIN, OUTPUT);
     pinMode(BTN_PIN, INPUT_PULLUP);
@@ -121,10 +137,10 @@ void loop() {
   }
   if(isRecording && !isRecordingShown){
     isRecordingShown = true;
-    Serial.println("Recording...");
+    Serial.println(F("Recording..."));
   }
   if(isRecording && isRecordingShown){
-    Serial.print("t/a/g:\t");
+    Serial.print(F("t/a/g:\t"));
     Serial.print(_time); Serial.print("\t");
     Serial.print(ax); Serial.print("\t");
     Serial.print(ay); Serial.print("\t");
@@ -151,10 +167,6 @@ void loop() {
 
 void WriteNewLine(){
    if (myFile && isRecording) {
-    
-    //t,gx,gy,gz,ax,ay,az
-    //0,39,86,183,-1137,-15689,-2986
-    //myFile.println(_time+','+gx+','+gy+','+gz+','+ax+','+ay+','+az);
     myFile.print(_time); myFile.print(",");
     myFile.print(gx);myFile.print(",");
     myFile.print(gy);myFile.print(",");
